@@ -19,48 +19,39 @@ object Main {
   type Seats = IndexedSeq[Option[String]]
   type Stander = (Int, String)
 
-  trait Shift {
-    def seat(stander: Stander, seats: Seats): Option[Seats] = {
-      shift(stander._1, seats.size) match {
-        case i if (seats(i).isEmpty) => Some(seats.updated(i, Some(stander._2)))
-        case _ => None
-      }
-    }
-    protected def shift(place: Int, tableSize: Int): Int
-  }
-
-  object Left extends Shift {
-    def shift(place: Int, tableSize: Int) = (place - 1) match { 
-      case i if (i < 0) => (tableSize - 1) 
-      case i => i 
-    }
-  }
-  object Same extends Shift {
-    def shift(place: Int, tableSize: Int) = place
-  }
-  object Right extends Shift {
-    def shift(place: Int, tableSize: Int) = (place + 1) % tableSize
-  }
-  object Shifts {
-    final val All = List(Left, Same, Right)
-  }
-
   case class Table(standers: List[Stander], seats: Seats) {
-    def uniqueArrangements: Set[Table] = Set(arrangements:_*)
-    def arrangements: Seq[Table] = {
-      standers match { 
-        case Nil => Seq(this)
-        case stander :: newStanders => Shifts.All.flatMap(_.seat(stander, seats)).flatMap(newSeats => Table(newStanders, newSeats).arrangements)
-      }
-    }
+    def size = seats.size
     def sitters = seats.map(_ match { case Some(name) => name case None => "" }).mkString(",")
+    def uniqueArrangements: Set[Table] = Table.arrangements(List(this)).toSet
+    type Move = Int => Int
+    private val moves: Seq[Move] = Seq(
+      { place => (place + 1) % this.size }, // Right
+      { place => place }, // Same
+      { place => (place - 1) match { case i if (i < 0) => (this.size - 1) case i => i  } } // Left
+    )
+    def seatNext: Seq[Table] = {
+      val (standerSpot, standerName) :: stillStanding = standers
+      moves.
+        map(_(standerSpot)).
+        collect { case seatedSpot if (seats(seatedSpot).isEmpty) => Table(stillStanding, seats.updated(seatedSpot, Some(standerName))) }
+    }
   }
 
   object Table {
     def apply(standingPeople: List[Stander]): Table = new Table(standingPeople, IndexedSeq.fill(standingPeople.length)(None))
     def apply(size: Int): Table = Table(0.until(size).map(i => (i, (Character.toString(('a' + i).toChar)))).toList)
     def apply(size: String): Table = apply(size.toInt)
+
+    def arrangements(tables: List[Table]): Seq[Table] = arrangements(tables, List())
+    @annotation.tailrec
+    private def arrangements(tables: List[Table], valid: Seq[Table]): Seq[Table] = {
+      tables match {
+        case Nil => valid
+        case table :: moreTables => {
+          if (table.standers.isEmpty) arrangements(moreTables, table +: valid)
+          else arrangements(table.seatNext ++: moreTables, valid)
+        }
+      }
+    }
   }
 }
-
-
